@@ -35,6 +35,13 @@ async function run() {
         // await client.connect();
 
         const blogsCollection = client.db("blogDb").collection('blogs');
+
+        app.get('/blogs', async (req, res) => {
+            const cursor = blogsCollection.find();
+            const result = await cursor.toArray();
+            res.send(result)
+        })
+
         app.post('/addblogs', async (req, res) => {
             const blog = req.body;
             console.log(blog)
