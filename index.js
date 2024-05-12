@@ -42,9 +42,15 @@ async function run() {
             res.send(result)
         })
 
+        app.get('/recentBlogs', async (req, res) => {
+            const cursor = blogsCollection.find().sort("createdAt", -1).limit(6);
+            const result = await cursor.toArray();
+            res.send(result)
+        })
+
         app.post('/addblogs', async (req, res) => {
             const blog = req.body;
-            console.log(blog)
+
             const result = await blogsCollection.insertOne(blog);
             res.send(result)
 
