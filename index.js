@@ -4,7 +4,11 @@ const mongodb = require('mongodb');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: ['http://localhost:5173'],
+    credentials: true
+
+}));
 app.use(express.json())
 
 
@@ -45,6 +49,22 @@ async function run() {
         app.get('/recentBlogs', async (req, res) => {
             const cursor = blogsCollection.find().sort("createdAt", -1).limit(6);
             const result = await cursor.toArray();
+            res.send(result)
+        })
+        app.get('/featuredBlogs', async (req, res) => {
+            const pipeline = [
+                {
+                    $addFields: {
+                        textLength: {
+                            $strLenCP: "$longDesc"
+                        }
+                    }
+                },
+                { $sort: { textLength: -1 } },
+                { $limit: 10 }
+            ]
+            const result = await blogsCollection.aggregate(pipeline).toArray();
+
             res.send(result)
         })
 
