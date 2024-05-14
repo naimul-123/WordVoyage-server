@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const mongodb = require('mongodb');
+
 require('dotenv').config();
 
 const app = express();
@@ -39,11 +40,28 @@ async function run() {
         // await client.connect();
 
         const blogsCollection = client.db("blogDb").collection('blogs');
-
+        const commentCollection = client.db("blogDb").collection('comments')
         app.get('/blogs', async (req, res) => {
-            const cursor = blogsCollection.find();
+            const searchQuery = req.query.filter
+            // console.log(searchQuery)
+            const query = {}
+            if (searchQuery) {
+                query.title = { $regex: searchQuery, $options: 'i' };
+            }
+            const cursor = blogsCollection.find(query);
             const result = await cursor.toArray();
             res.send(result)
+        })
+
+        app.get('/comments', async (req, res) => {
+            const id = req.query.blogId;
+            const query = {
+                blogId: id
+            }
+
+            const result = await commentCollection.find(query).toArray();
+            res.send(result)
+
         })
 
         app.get('/recentBlogs', async (req, res) => {
@@ -68,12 +86,66 @@ async function run() {
             res.send(result)
         })
 
+        app.get('/blog/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new mongodb.ObjectId(id) }
+            const result = await blogsCollection.findOne(query)
+            res.send(result)
+
+        })
+        app.get('/mywishlist/:email', async (req, res) => {
+            const email = req.params.email;
+            console.log(email)
+            const query = { wishedEmail: email }
+            const result = await blogsCollection.find(query).toArray();
+            res.send(result)
+        })
+
         app.post('/addblogs', async (req, res) => {
             const blog = req.body;
 
             const result = await blogsCollection.insertOne(blog);
             res.send(result)
 
+        })
+        app.put('/updateblog', async (req, res) => {
+            const blog = req.body
+            const id = blog._id;
+            const filter = { _id: new mongodb.ObjectId(id) };
+            const updatedBlog = {
+                $set: {
+                    title: blog.title,
+                    imgUrl: blog.imgUrl,
+                    catagory: blog.catagory,
+                    shortDisc: blog.shortDisc,
+                    longDesc: blog.longDesc
+                }
+            }
+
+            const result = await blogsCollection.updateOne(filter, updatedBlog)
+            console.log(result)
+            res.send(result)
+        })
+
+        app.put('/addtowish', async (req, res) => {
+            const wishInfo = req.body
+            const { _id, email } = wishInfo
+            const filter = { _id: new mongodb.ObjectId(_id) }
+            const addtoWish = {
+                $addToSet: {
+                    wishedEmail: email
+                }
+            }
+            const result = await blogsCollection.updateOne(filter, addtoWish)
+            res.send(result)
+
+
+        })
+
+        app.post('/addComment', async (req, res) => {
+            const comment = req.body
+            const result = await commentCollection.insertOne(comment)
+            res.send(result)
         })
 
         // Send a ping to confirm a successful connection
