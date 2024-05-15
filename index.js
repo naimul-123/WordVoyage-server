@@ -1,7 +1,9 @@
 const express = require('express');
 const cors = require('cors');
-const mongodb = require('mongodb');
 
+const mongodb = require('mongodb');
+const jwt = require('jsonwebtoken')
+const cookieParser = require('cookie-parser')
 require('dotenv').config();
 
 const app = express();
@@ -11,11 +13,28 @@ app.use(cors({
 
 }));
 app.use(express.json())
+app.use(cookieParser())
 
-
-const port = process.env.PORT || 5000
+const port = process.env.PORT
 const username = process.env.DB_USER
-const password = process.env.DB_PASSWORD || 5000
+const password = process.env.DB_PASSWORD
+const secret = process.env.SECREET_KEY
+
+// middleware
+const verifyToken = async (req, res, next) => {
+    const token = req.cookies?.token;
+    if (!token) {
+        return res.status(401).send({ message: 'Not Authorized' })
+    }
+
+    jwt.verify(token, secret, async (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: err.message })
+        }
+        req.user = decoded;
+        next();
+    })
+}
 
 app.get('/', async (req, res) => {
     res.send(`Assignment 11 server is running Ok`)
@@ -40,20 +59,29 @@ async function run() {
         // await client.connect();
 
         const blogsCollection = client.db("blogDb").collection('blogs');
-        const commentCollection = client.db("blogDb").collection('comments')
+        const commentCollection = client.db("blogDb").collection('comments');
+        const newsLetterCollection = client.db("blogDb").collection('newsLetter')
         app.get('/blogs', async (req, res) => {
-            const searchQuery = req.query.filter
+            const title = req.query.title
+            const category = req.query.category
             // console.log(searchQuery)
-            const query = {}
-            if (searchQuery) {
-                query.title = { $regex: searchQuery, $options: 'i' };
+            let query = {}
+            if (title) {
+                query.title = { $regex: title, $options: 'i' };
             }
+
+            if (category) {
+                query.catagory = category;
+            }
+
+
+
             const cursor = blogsCollection.find(query);
             const result = await cursor.toArray();
             res.send(result)
         })
 
-        app.get('/comments', async (req, res) => {
+        app.get('/comments', verifyToken, async (req, res) => {
             const id = req.query.blogId;
             const query = {
                 blogId: id
@@ -86,16 +114,19 @@ async function run() {
             res.send(result)
         })
 
-        app.get('/blog/:id', async (req, res) => {
+        app.get('/blog/:id', verifyToken, async (req, res) => {
             const id = req.params.id;
             const query = { _id: new mongodb.ObjectId(id) }
             const result = await blogsCollection.findOne(query)
             res.send(result)
 
         })
-        app.get('/mywishlist/:email', async (req, res) => {
+        app.get('/mywishlist/:email', verifyToken, async (req, res) => {
             const email = req.params.email;
-            console.log(email)
+            if (email !== req.user.email) {
+                return res.status(403).send({ message: "Forbiden Acccess" })
+            }
+            // console.log(email)
             const query = { wishedEmail: email }
             const result = await blogsCollection.find(query).toArray();
             res.send(result)
@@ -107,6 +138,23 @@ async function run() {
             const result = await blogsCollection.insertOne(blog);
             res.send(result)
 
+        })
+
+        app.put('/addtonewsletter', async (req, res) => {
+            const { email } = req.body;
+            const result = await newsLetterCollection.updateOne({}, { $addToSet: { newsLetterEmails: email } }, { upsert: true })
+            res.send(result)
+        })
+
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, secret, {
+                expiresIn: '1h'
+            });
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: false
+            }).send({ success: true })
         })
         app.put('/updateblog', async (req, res) => {
             const blog = req.body
@@ -123,13 +171,14 @@ async function run() {
             }
 
             const result = await blogsCollection.updateOne(filter, updatedBlog)
-            console.log(result)
+
             res.send(result)
         })
 
         app.put('/addtowish', async (req, res) => {
             const wishInfo = req.body
             const { _id, email } = wishInfo
+
             const filter = { _id: new mongodb.ObjectId(_id) }
             const addtoWish = {
                 $addToSet: {
@@ -140,6 +189,19 @@ async function run() {
             res.send(result)
 
 
+        })
+
+        app.put('/removefromwish', async (req, res) => {
+            const { id, email } = req.body;
+
+            const filter = { _id: new mongodb.ObjectId(id) }
+            const addtoWish = {
+                $pull: {
+                    wishedEmail: email
+                }
+            }
+            const result = await blogsCollection.updateOne(filter, addtoWish)
+            res.send(result)
         })
 
         app.post('/addComment', async (req, res) => {
